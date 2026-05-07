@@ -1,0 +1,96 @@
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Layout principal para toda la aplicación */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: #F5FFFF;
+}
+
+/* Header fijo */
+.jc-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  z-index: 1000;
+}
+
+/* Contenedor principal que evita el header y sidebar */
+.main-content {
+  flex: 1;
+  min-height: 100vh;
+  margin-left: 249px; /* Ancho del sidebar */
+  padding-top: 70px; /* Altura del header */
+  background-color: #F5FFFF;
+  overflow-y: auto;
+}
+
+/* Asegurar que todas las páginas ocupen el espacio completo */
+.page-container {
+  width: 100%;
+  min-height: calc(100vh - 70px);
+  padding: 20px;
+}
+
+/* Estilos específicos para el visor VTK (mantener estos) */
+.viewer-container {
+  flex: 1;
+  display: flex;
+  position: relative;
+  background: #181a1b;
+  overflow: hidden;
+  height: calc(100vh - 70px);
+}
+
+.vtk-container {
+  flex: 1;
+  background-color: #222 !important;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .main-content {
+    margin-left: 220px;
+    padding: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 0;
+    padding: 15px;
+  }
+  
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 10px;
+  }
+  
+  .page-container {
+    padding: 15px;
+  }
+}

@@ -1,0 +1,177 @@
+services:
+  # ===========================
+  # DATABASE (JoeyCare)
+  # ===========================
+  db:
+    image: mysql:8.0
+    container_name: joeycare-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: joeycare_db
+      MYSQL_USER: joeyuser
+      MYSQL_PASSWORD: joeypass
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./JoeyCare/backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tesis-network
+
+  # ===========================
+  # JOYCARE BACKEND
+  # ===========================
+  joycare-backend:
+    build:
+      context: ./JoeyCare/backend
+      dockerfile: Dockerfile
+    container_name: joeycare-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_USER: joeyuser
+      DB_PASSWORD: joeypass
+      DB_NAME: joeycare_db
+      DB_PORT: 3306
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+    volumes:
+      - ./JoeyCare/backend/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tesis-network
+
+  # ===========================
+  # JOYCARE FRONTEND
+  # ===========================
+  joycare-frontend:
+    build:
+      context: ./JoeyCare/frontend
+      dockerfile: Dockerfile
+    container_name: joeycare-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - joycare-backend
+    networks:
+      - tesis-network
+
+  # ===========================
+  # ORTHANC - PACS + DICOMweb
+  # ===========================
+  orthanc:
+    image: orthancteam/orthanc:24.3.5
+    container_name: orthanc
+    ports:
+      - "8042:8042"
+      - "4242:4242"
+    volumes:
+      - orthanc-data:/var/lib/orthanc/db
+    environment:
+      - ORTHANC__NAME=ATIM-Orthanc
+      - ORTHANC__REMOTE_ACCESS_ALLOWED=true
+      - ORTHANC__AUTHENTICATION_ENABLED=true
+      - "ORTHANC__REGISTERED_USERS={\"atim\": \"atim2026secure\"}"
+      - ORTHANC__DICOM_AET=ATIM
+      - ORTHANC__DICOM_PORT=4242
+      - ORTHANC__DICOM_WEB__ENABLE=true
+      - ORTHANC__DICOM_WEB__ROOT=/dicom-web/
+      - ORTHANC__DICOM_WEB__ENABLE_WADO=true
+      - ORTHANC__DICOM_WEB__WADO_ROOT=/wado
+      - ORTHANC__DICOM_WEB__STUDIES_METADATA=Full
+      - ORTHANC__DICOM_WEB__SERIES_METADATA=Full
+      - VERBOSE_ENABLED=true
+      - DICOM_WEB_PLUGIN_ENABLED=true
+      - ORTHANC_EXPLORER_2_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,base64; req=urllib.request.Request('http://localhost:8042/system'); req.add_header('Authorization','Basic '+base64.b64encode(b'atim:atim2026secure').decode()); urllib.request.urlopen(req)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - tesis-network
+    restart: unless-stopped
+
+  # ===========================
+  # OHIF NGINX (CORS + app-config)
+  # ===========================
+  ohif-nginx:
+    image: nginx:alpine
+    container_name: ohif-nginx
+    ports:
+      - "3000:80"
+    volumes:
+      - ./ATIM/ohif-config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ATIM/ohif-config/default.js:/usr/share/nginx/html/app-config.js:ro
+    depends_on:
+      orthanc:
+        condition: service_healthy
+    networks:
+      - tesis-network
+    restart: unless-stopped
+
+  ohif-viewer:
+    image: ohif/app:latest
+    container_name: ohif-viewer
+    networks:
+      - tesis-network
+    restart: unless-stopped
+
+  # ===========================
+  # ATIM (Transfer API)
+  # ===========================
+  atim:
+    build:
+      context: ./ATIM
+      dockerfile: Dockerfile
+    container_name: atim-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: ATIM
+      APP_VERSION: 0.1.0
+      APP_ENV: development
+      DEBUG: "true"
+      HOST: 0.0.0.0
+      PORT: 8000
+      ORTHANC_HOST: orthanc
+      ORTHANC_HTTP_PORT: 8042
+      ORTHANC_DICOM_PORT: 4242
+      ORTHANC_USERNAME: atim
+      ORTHANC_PASSWORD: atim2026secure
+      ORTHANC_USE_DICOMWEB: "true"
+      JOEYCARE_HOST: joycare-backend
+      JOEYCARE_PORT: 4000
+      JOEYCARE_UPLOAD_ENDPOINT: /api/ecografias
+      SECRET_KEY: cambiar-esto-en-produccion-con-algo-seguro
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      AES_ENCRYPTION_KEY: cambiar-esto-tambien-32-bytes-key
+    depends_on:
+      orthanc:
+        condition: service_healthy
+      joycare-backend:
+        condition: service_started
+    networks:
+      - tesis-network
+
+volumes:
+  db_data:
+  orthanc-data:
+
+networks:
+  tesis-network:
+    driver: bridge
